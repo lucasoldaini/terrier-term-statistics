@@ -26,7 +26,7 @@
             <configuration>
                 <archive>
                     <manifest>
-                        <mainClass>net.soldaini.termStatistics.TermStatistics</mainClass>
+                        <mainClass>net.soldaini.TermStatistics.TermStatistics</mainClass>
                     </manifest>
                 </archive>
                 <descriptorRefs>

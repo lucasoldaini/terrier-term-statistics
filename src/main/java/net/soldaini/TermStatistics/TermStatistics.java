@@ -1,11 +1,10 @@
-package net.soldaini.termStatistics;
+package net.soldaini.TermStatistics;
 import org.terrier.querying.Manager;
 import org.terrier.structures.Index;
 import org.terrier.querying.SearchRequest;
 import org.terrier.matching.ResultSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.terrier.utility.ApplicationSetup;
 
 import java.io.IOException;
 
