@@ -20,3 +20,5 @@ target/
 
 # macOS files
 .DS_Store
+*.iml
+
