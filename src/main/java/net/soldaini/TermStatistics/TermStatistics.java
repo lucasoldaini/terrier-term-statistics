@@ -19,7 +19,7 @@ public class TermStatistics {
     private Index index;
     private PostingIndex <Pointer> invertedIndex;
     private MetaIndex metaIndex;
-    Lexicon<String> lex;
+    private Lexicon<String> lex;
     protected static final Logger logger = LoggerFactory.getLogger(TermStatistics.class);
 //    private ApplicationSetup properties;
 
@@ -38,18 +38,16 @@ public class TermStatistics {
         lex = index.getLexicon();
     }
 
-    public SearchRequest getSearchResults(String [] queryTerms){
-        @SuppressWarnings("Since15") String query = String.join(" ", queryTerms);
-
+    private SearchRequest getSearchResults(String queryString){
         Manager queryingManager = new Manager(this.index);
-        SearchRequest srq = queryingManager.newSearchRequestFromQuery(query);
+        SearchRequest srq = queryingManager.newSearchRequestFromQuery(queryString);
         srq.addMatchingModel("Matching","BM25");
         srq.setControl("decorate", "on");
         queryingManager.runSearchRequest(srq);
         return srq;
     }
 
-    public double [][] getTermsTf(String [] queryTerms, int [] docIds) throws IOException {
+    private double [][] getTermsTf(String [] queryTerms, int [] docIds) throws IOException {
         double[][] tfs = new double[queryTerms.length][docIds.length];
 
         HashMap <Integer, Integer> docIdsMap = new HashMap <>();
@@ -58,35 +56,47 @@ public class TermStatistics {
         }
 
         int currentDocId;
-         for (int i = 0; i < queryTerms.length; i++){
+        for (int i = 0; i < queryTerms.length; i++){
+            LexiconEntry le = this.lex.getLexiconEntry(queryTerms[i]);
+            if (le == null) continue;
 
-             LexiconEntry le = this.lex.getLexiconEntry(queryTerms[i]);
-             if (le == null) continue;
-
-             IterablePosting postings = this.invertedIndex.getPostings(le);
-             while (postings.next() != IterablePosting.EOL) {
-                 currentDocId = postings.getId();
-                 if (docIdsMap.containsKey(currentDocId)) {
-                     tfs[i][docIdsMap.get(currentDocId)] = postings.getFrequency();
-                 }
-             }
-         }
+            IterablePosting postings = this.invertedIndex.getPostings(le);
+            while (postings.next() != IterablePosting.EOL) {
+                currentDocId = postings.getId();
+                if (docIdsMap.containsKey(currentDocId)) {
+                    tfs[i][docIdsMap.get(currentDocId)] = postings.getFrequency();
+                }
+            }
+        }
         return tfs;
     }
 
-    public static void main(String[] args) throws IOException {
-        String [] queryTerms = {"an", "Apple^2.0", "pie"};
+    private double [] getTermsDf(String [] queryTerms) throws IOException {
+        double[] dfs = new double[queryTerms.length];
 
-        TermStatistics ts = new TermStatistics();
-        SearchRequest request = ts.getSearchResults(queryTerms);
+        for (int i = 0; i < queryTerms.length; i++){
+            LexiconEntry le = this.lex.getLexiconEntry(queryTerms[i]);
+            if (le != null){
+                dfs[i] = le.getDocumentFrequency();
+            }
+        }
+        return dfs;
+    }
 
-        // Get terms of query; note that some terms might have been
-        // stemmed while stearching; we do out best to align them.
+
+    public void getQueryStatistics(String queryString) throws IOException {
+        String [] queryTerms  = queryString.split("\\s+");
+
+        SearchRequest request = this.getSearchResults(queryString);
+
+        // Get terms of query that have been used for searching;
+        // note that some terms might have been stemmed while stearching
         Query query = request.getQuery();
         List <String> mutableModQueryTerms = new LinkedList<>(
                 Arrays.asList(query.toString().split(" ")));
 
-
+        // We align the (possibly stemmed or removed) terms with the
+        // original query
         int i = 0;
         while (i < queryTerms.length){
             String term = mutableModQueryTerms.get(i).split("\\^")[0];
@@ -98,6 +108,7 @@ public class TermStatistics {
             i++;
         }
 
+        // finally, we turn the terms into an array
         String [] modQueryTerms = mutableModQueryTerms.toArray(
                 new String [mutableModQueryTerms.size()]);
 
@@ -106,6 +117,14 @@ public class TermStatistics {
         int [] documentIds = results.getDocids();
         double [] documentScores = results.getScores();
 
-        double [][] tfs = ts.getTermsTf(modQueryTerms, documentIds);
+        // Get the term frequency of terms
+        double [][] tfs = this.getTermsTf(modQueryTerms, documentIds);
+        double [] dfs = this.getTermsDf(modQueryTerms);
+    }
+
+    public static void main(String[] args) throws IOException {
+        TermStatistics ts = new TermStatistics();
+        ts.getQueryStatistics("an Apple^2.0 pie");
+
     }
 }
