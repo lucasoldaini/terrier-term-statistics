@@ -1,4 +1,5 @@
 package net.soldaini.TermStatistics;
+import org.apache.commons.lang.ArrayUtils;
 import org.terrier.querying.Manager;
 import org.terrier.querying.parser.Query;
 import org.terrier.structures.*;
@@ -12,8 +13,7 @@ import org.terrier.utility.ApplicationSetup;
 
 import java.lang.String;
 import java.io.IOException;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
 
 public class TermStatistics {
     private Index index;
@@ -38,31 +38,6 @@ public class TermStatistics {
         lex = index.getLexicon();
     }
 
-    public double [] getTermsTf(String [] queryTerms, int [] docIds) throws IOException {
-        List <double []> tfs;
-//        BitIndexPointer[] termIds = new BitIndexPointer[queryTerms.length];
-
-        String term;
-        for (int i = 0; i < queryTerms.length; i++) {
-            term = queryTerms[i].split("\\^")[0];
-            LexiconEntry le = this.lex.getLexiconEntry(term);
-            IterablePosting postings = this.invertedIndex.getPostings(le);
-
-
-            i = i + 1 - 1;
-        }
-
-         for (int i = 0; i < queryTerms.length; i++){
-            for (int j = 0; j < docIds.length; j ++){
-
-            }
-         }
-
-
-        double a[]= new double[0];
-        return a;
-    }
-
     public SearchRequest getSearchResults(String [] queryTerms){
         @SuppressWarnings("Since15") String query = String.join(" ", queryTerms);
 
@@ -74,6 +49,29 @@ public class TermStatistics {
         return srq;
     }
 
+    public double [] getTermsTf(String [] queryTerms, int [] docIds) throws IOException {
+        List <double []> tfs;
+
+        HashSet <Integer> docIdsSet = new HashSet<Integer>(
+                Arrays.asList(ArrayUtils.toObject(docIds)));
+
+         for (int i = 0; i < queryTerms.length; i++){
+             i++;
+             LexiconEntry le = this.lex.getLexiconEntry(queryTerms[i]);
+             IterablePosting postings = this.invertedIndex.getPostings(le);
+             for (int j = 0; j < docIds.length; j ++){
+                 while (postings.next() != IterablePosting.EOL) {
+                     Map.Entry<String,LexiconEntry> lee = lex.getLexiconEntry(postings.getId());
+                     System.out.print(lee.getKey() + " with frequency " + postings.getFrequency());
+}
+            }
+         }
+
+
+        double a[]= new double[0];
+        return a;
+    }
+
     public static void main(String[] args) throws IOException {
         String [] queryTerms = {"an", "Apple^2.0", "pie"};
 
@@ -83,19 +81,29 @@ public class TermStatistics {
         // Get terms of query; note that some terms might have been
         // stemmed while stearching; we do out best to align them.
         Query query = request.getQuery();
-        String [] modQueryTerms = query.toString().split(" ");
+        List <String> mutableModQueryTerms = new LinkedList<String>(
+                Arrays.asList(query.toString().split(" ")));
+
+
         int i = 0;
         while (i < queryTerms.length){
-            term = queryTerms[i].split("\\^")[0];
+            String term = mutableModQueryTerms.get(i).split("\\^")[0];
+            while (!queryTerms[i].toLowerCase().startsWith(term)){
+                mutableModQueryTerms.add(i, "");
+                i++;
+            }
+            mutableModQueryTerms.set(i, term);
             i++;
         }
 
+        String [] modQueryTerms = mutableModQueryTerms.toArray(
+                new String [mutableModQueryTerms.size()]);
 
         // Get id and scores of results.
         ResultSet results = request.getResultSet();
         int [] documentIds = results.getDocids();
         double [] documentScores = results.getScores();
 
-        double tfs[] = ts.getTermsTf(queryTerms, documentIds);
+        double tfs[] = ts.getTermsTf(modQueryTerms, documentIds);
     }
 }
