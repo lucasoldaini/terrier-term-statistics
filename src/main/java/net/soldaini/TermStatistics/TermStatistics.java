@@ -94,7 +94,6 @@ public class TermStatistics {
 
         for (int j = 0; j < docIds.length; j++){
             docLengths[j] = this.documentIndex.getDocumentLength(docIds[j]);
-            System.out.print(j);
         }
 
         return docLengths;
@@ -136,15 +135,12 @@ public class TermStatistics {
 
             origTerm = normalizeString(queryTerms[i]);
 
-            System.out.println(mutedTerm + '\t' + origTerm);
-
             while (! origTerm.startsWith(mutedTerm) && i < queryTerms.length){
                 mutableTokenizedOrigQuery.add(origTerm);
                 mutableModQueryTerms.add(i, "");
 
                 i++;
                 origTerm = normalizeString(queryTerms[i]);
-                System.out.println(mutedTerm + '\t' + origTerm);
 
             }
             mutableTokenizedOrigQuery.add(origTerm);
@@ -192,5 +188,6 @@ public class TermStatistics {
         TermStatistics ts = new TermStatistics();
         ts.getQueryStatistics("an Apple^2.0 pie; a treat! the");
 
+        ts.close();
     }
 }
