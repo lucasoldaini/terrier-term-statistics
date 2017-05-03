@@ -1,5 +1,7 @@
 package net.soldaini.TermStatistics;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
 import org.terrier.querying.Manager;
 import org.terrier.querying.parser.Query;
 import org.terrier.structures.*;
@@ -18,6 +20,8 @@ import java.util.*;
 public class TermStatistics {
     private Index index;
     private PostingIndex <Pointer> invertedIndex;
+    private PostingIndex <Pointer> directIndex;
+    private DocumentIndex documentIndex;
     private MetaIndex metaIndex;
     private Lexicon<String> lex;
     protected static final Logger logger = LoggerFactory.getLogger(TermStatistics.class);
@@ -33,7 +37,9 @@ public class TermStatistics {
 
 	public TermStatistics() {
         index = Index.createIndex();
+        directIndex = (PostingIndex<Pointer>) index.getDirectIndex();
         invertedIndex = (PostingIndex<Pointer>) index.getInvertedIndex();
+        documentIndex = index.getDocumentIndex();
         metaIndex = index.getMetaIndex();
         lex = index.getLexicon();
     }
@@ -83,9 +89,30 @@ public class TermStatistics {
         return dfs;
     }
 
+    private double [] getDocsLength(int [] docIds) throws IOException {
+        double[] docLengths = new double[docIds.length];
 
-    public void getQueryStatistics(String queryString) throws IOException {
+        for (int j = 0; j < docIds.length; j++){
+            docLengths[j] = this.documentIndex.getDocumentLength(docIds[j]);
+            System.out.print(j);
+        }
+
+        return docLengths;
+    }
+
+    private String normalizeString(String str){
+        String normed = str.toLowerCase();
+        normed = normed.replaceAll("([\\p{P}\\s]+$|^[\\p{P}\\s]+)", "");
+        normed = normed.split("\\^")[0];
+        return normed;
+    }
+
+
+    public JSONObject getQueryStatistics(String queryString) throws IOException {
         String [] queryTerms  = queryString.split("\\s+");
+
+        // we keep the tokenized origninal query here
+        List <String> mutableTokenizedOrigQuery = new LinkedList<>();
 
         SearchRequest request = this.getSearchResults(queryString);
 
@@ -98,33 +125,72 @@ public class TermStatistics {
         // We align the (possibly stemmed or removed) terms with the
         // original query
         int i = 0;
-        while (i < queryTerms.length){
-            String term = mutableModQueryTerms.get(i).split("\\^")[0];
-            while (!queryTerms[i].toLowerCase().startsWith(term)){
-                mutableModQueryTerms.add(i, "");
-                i++;
+        String mutedTerm, origTerm;
+        while (i < queryTerms.length) {
+
+            if (i < mutableModQueryTerms.size()) {
+                mutedTerm = normalizeString(mutableModQueryTerms.get(i));
+            } else {
+                mutedTerm = "";
             }
-            mutableModQueryTerms.set(i, term);
+
+            origTerm = normalizeString(queryTerms[i]);
+
+            System.out.println(mutedTerm + '\t' + origTerm);
+
+            while (! origTerm.startsWith(mutedTerm) && i < queryTerms.length){
+                mutableTokenizedOrigQuery.add(origTerm);
+                mutableModQueryTerms.add(i, "");
+
+                i++;
+                origTerm = normalizeString(queryTerms[i]);
+                System.out.println(mutedTerm + '\t' + origTerm);
+
+            }
+            mutableTokenizedOrigQuery.add(origTerm);
+
+            if (i >= mutableModQueryTerms.size()) {
+                mutableModQueryTerms.add(mutedTerm);
+            } else{
+                mutableModQueryTerms.set(i, mutedTerm);
+            }
+
             i++;
         }
 
         // finally, we turn the terms into an array
         String [] modQueryTerms = mutableModQueryTerms.toArray(
                 new String [mutableModQueryTerms.size()]);
+        String [] tokenizedOrigQuery = mutableTokenizedOrigQuery.toArray(
+                new String [mutableTokenizedOrigQuery.size()]);
 
         // Get id and scores of results.
         ResultSet results = request.getResultSet();
         int [] documentIds = results.getDocids();
         double [] documentScores = results.getScores();
 
-        // Get the term frequency of terms
+        // Get statistcs necessary for scoring
         double [][] tfs = this.getTermsTf(modQueryTerms, documentIds);
         double [] dfs = this.getTermsDf(modQueryTerms);
+        double [] docsLengths = this.getDocsLength(documentIds);
+        double avgDocsLengths = this.index.getCollectionStatistics().getAverageDocumentLength();
+
+        JSONObject jsonOut = new JSONObject();
+        jsonOut.put("tfs", tfs);
+        jsonOut.put("dfs", dfs);
+        jsonOut.put("doc_len", docsLengths);
+        jsonOut.put("avg_doc_len", avgDocsLengths);
+        jsonOut.put("avg_doc_len", avgDocsLengths);
+        jsonOut.put("query", queryString);
+        jsonOut.put("terms", tokenizedOrigQuery);
+
+        return jsonOut;
+
     }
 
     public static void main(String[] args) throws IOException {
         TermStatistics ts = new TermStatistics();
-        ts.getQueryStatistics("an Apple^2.0 pie");
+        ts.getQueryStatistics("an Apple^2.0 pie; a treat! the");
 
     }
 }
