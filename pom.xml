@@ -37,10 +37,8 @@
                 <version>2.6</version>
                 <configuration>
                     <archive>
-                        <source>1.8</source>
-                        <target>1.8</target>
                         <manifest>
-                            <mainClass>net.soldaini.TermStatistics.TermStatistics</mainClass>
+                            <mainClass>net.soldaini.termstatistics.TermStatistics</mainClass>
                         </manifest>
                     </archive>
                     <descriptorRefs>
