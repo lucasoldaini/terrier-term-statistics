@@ -1,10 +1,11 @@
 package net.soldaini.termstatistics;
 
-import java.io.File;
+import java.io.*;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 
+import com.sun.prism.shader.Solid_TextureYV12_AlphaTest_Loader;
 import org.slf4j.LoggerFactory;
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
@@ -24,9 +25,7 @@ import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
 import org.w3c.dom.Element;
 
-import java.io.PrintWriter;
 import java.lang.String;
-import java.io.IOException;
 import java.util.*;
 
 
@@ -34,7 +33,6 @@ import java.util.*;
 public class TermStatistics {
     private Index index;
     private PostingIndex <Pointer> invertedIndex;
-    private PostingIndex <Pointer> directIndex;
     private DocumentIndex documentIndex;
     private MetaIndex metaIndex;
     private Lexicon<String> lex;
@@ -50,7 +48,6 @@ public class TermStatistics {
 
 	public TermStatistics() {
         index = Index.createIndex();
-        directIndex = (PostingIndex<Pointer>) index.getDirectIndex();
         invertedIndex = (PostingIndex<Pointer>) index.getInvertedIndex();
         documentIndex = index.getDocumentIndex();
         metaIndex = index.getMetaIndex();
@@ -120,82 +117,70 @@ public class TermStatistics {
         return normed;
     }
 
-    public JSONObject getQueryStatistics(String queryString) throws IOException{
-        return this.getQueryStatistics(queryString, 0);
-    }
-
     private String stem(String term){
         this.stemmer.setCurrent(term);
         stemmer.stem();
         return stemmer.getCurrent();
     }
 
-    public JSONObject getQueryStatistics(String queryString, int queryId) throws IOException {
+    private String [] getDocNames (int [] docIds) throws IOException {
+        String [] docNames = new String[docIds.length];
+        for (int i = 0; i < docIds.length; i++) {
+            docNames[i] = this.getDocNames(docIds[i]);
+        }
+        return docNames;
+    }
+
+    private String  getDocNames (int docId) throws IOException {
+        return this.metaIndex.getAllItems(docId)[0];
+    }
+
+    private int [] getDocIds (String [] docNames) throws IOException {
+        int [] docIds = new int[docNames.length];
+        for (int i = 0; i < docIds.length; i++) {
+            docIds[i] = this.getDocIds(docNames[i]);
+        }
+        return docIds;
+    }
+
+    private int getDocIds (String docName) throws IOException {
+        return this.metaIndex.getDocument("docno", docName);
+    }
+
+    private JSONObject getQueryStatistics(String queryString, int queryId, HashSet <Integer> queryDocIdsSet) throws IOException {
+        float start = System.currentTimeMillis();
         System.out.println("[info] Query " + queryId + ": \"" + queryString + "\"");
 
-        String [] queryTerms  = queryString.split("\\s+");
+        String [] queryTerms  = queryString.split("[\\P{L}\\s]+");
+        SearchRequest request = this.getSearchResults(String.join(" ", queryTerms));
 
-        // we keep the tokenized origninal query here
-        List <String> mutableTokenizedOrigQuery = new LinkedList<>();
+        List <String> mutSubmittedTerms= new LinkedList<>(
+                Arrays.asList(request.getQuery().toString().split(" ")));
 
-        SearchRequest request = this.getSearchResults(queryString);
-
-        // Get terms of query that have been used for searching;
-        // note that some terms might have been stemmed while stearching
-        Query query = request.getQuery();
-        List <String> mutableModQueryTerms = new LinkedList<>(
-                Arrays.asList(query.toString().split(" ")));
-
-        // We align the (possibly stemmed or removed) terms with the
-        // original query
         int i = 0;
-        String mutedTerm, origTerm;
-        boolean isSimilar;
-        while (i < queryTerms.length) {
-
-            if (i < mutableModQueryTerms.size()) {
-                mutedTerm = normalizeString(mutableModQueryTerms.get(i));
-            } else {
-                mutedTerm = "";
-            }
-
-            origTerm = normalizeString(queryTerms[i]);
-
-            isSimilar = origTerm.startsWith(mutedTerm) || (this.stem(mutedTerm).equals(this.stem(origTerm)));
-
-            while (!isSimilar && i < queryTerms.length){
-                mutableTokenizedOrigQuery.add(origTerm);
-                mutableModQueryTerms.add(i, "");
-
-                i++;
-                origTerm = normalizeString(queryTerms[i]);
-                isSimilar = origTerm.startsWith(mutedTerm) || (this.stem(mutedTerm).equals(this.stem(origTerm)));
-
-            }
-            mutableTokenizedOrigQuery.add(origTerm);
-
-            if (i >= mutableModQueryTerms.size()) {
-                mutableModQueryTerms.add(mutedTerm);
-            } else{
-                mutableModQueryTerms.set(i, mutedTerm);
+        while (i < mutSubmittedTerms.size()) {
+            String subTerm = mutSubmittedTerms.get(i);
+            String normedSubTerm = normalizeString(subTerm);
+            String normedQueryTerm = stem(normalizeString(queryTerms[i]));
+            if (!normedQueryTerm.equals(normedSubTerm)) {
+                mutSubmittedTerms.add(i, "");
             }
             i++;
         }
 
-        // finally, we turn the terms into an array
-        String [] modQueryTerms = mutableModQueryTerms.toArray(
-                new String [mutableModQueryTerms.size()]);
-        String [] tokenizedOrigQuery = mutableTokenizedOrigQuery.toArray(
-                new String [mutableTokenizedOrigQuery.size()]);
+        String [] subittedTerms = mutSubmittedTerms.toArray(
+                new String [mutSubmittedTerms.size()]);
 
-        // Get id and scores of results.
-        ResultSet results = request.getResultSet();
-        int [] documentIds = results.getDocids();
-        double [] documentScores = results.getScores();
+        int [] documentIds = new int[queryDocIdsSet.size()];
+        int h = 0;
+        for (int docId : queryDocIdsSet) {
+            documentIds[h] = docId; h += 1;
+        }
+        Arrays.sort(documentIds);
 
         // Get statistcs necessary for scoring
-        double [][] tfs = this.getTermsTf(modQueryTerms, documentIds);
-        double [] dfs = this.getTermsDf(modQueryTerms);
+        double [][] tfs = this.getTermsTf(subittedTerms, documentIds);
+        double [] dfs = this.getTermsDf(subittedTerms);
         double [] docsLengths = this.getDocsLength(documentIds);
         double avgDocsLengths = this.index.getCollectionStatistics().getAverageDocumentLength();
 
@@ -204,11 +189,14 @@ public class TermStatistics {
         jsonOut.put("dfs", dfs);
         jsonOut.put("doc_len", docsLengths);
         jsonOut.put("avg_doc_len", avgDocsLengths);
-        jsonOut.put("avg_doc_len", avgDocsLengths);
         jsonOut.put("query", queryString);
-        jsonOut.put("terms", tokenizedOrigQuery);
-        jsonOut.put("doc_scores", documentScores);
+        jsonOut.put("terms", queryTerms);
+        jsonOut.put("doc_ids", this.getDocNames(documentIds));
         jsonOut.put("qid", queryId);
+
+
+        float end = System.currentTimeMillis();
+        System.out.println("[info] Query " + queryId + " completed in " + ((int) (end - start)) + " seconds.");
 
         return jsonOut;
 
@@ -228,14 +216,29 @@ public class TermStatistics {
             int queryId = Integer.parseInt(query.getElementsByTagName("id").item(0).getTextContent().trim());
             String queryText = query.getElementsByTagName("title").item(0).getTextContent();
 
-            // System does not like full stops
-            queryText = queryText.replaceAll("\\.", "");
-            queryText = queryText.replaceAll("(\\w+)-(\\w+)", "$1 $2");
-
             queriesMap.put(queryId, queryText);
         }
 
         return queriesMap;
+    }
+
+    private HashMap <Integer, HashSet <Integer>> loadDocuments(String path) throws IOException{
+        HashMap <Integer, HashSet <Integer>> documentsIdsMap = new HashMap<>();
+
+        BufferedReader br = new BufferedReader(new FileReader(path));
+        String line = null;
+        while ((line = br.readLine()) != null) {
+            String [] parsed = line.split("\\s");
+            Integer queryId = Integer.parseInt(parsed[0]);
+            String docName = parsed[1].trim();
+
+            if (! documentsIdsMap.containsKey(queryId)) {
+                documentsIdsMap.put(queryId, new HashSet<>());
+            }
+            documentsIdsMap.get(queryId).add(this.getDocIds(docName));
+        }
+
+        return documentsIdsMap;
     }
 
     public static void main(String[] args) throws IOException, SAXException, ParserConfigurationException  {
@@ -245,26 +248,32 @@ public class TermStatistics {
 
         // parse from input the path to the
         String queriesPath = "";
+        String docIdsPath = "";
         String outputPath = "";
         try {
             queriesPath = args[0];
-            outputPath = args[1];
+            docIdsPath = args[1];
+            outputPath = args[2];
 
         } catch (ArrayIndexOutOfBoundsException e) {
-            System.err.println("USAGE: java -jar TermStatistics.jar [queriesPath] [outputPath]");
+            System.err.println("USAGE: java -jar TermStatistics.jar [queriesPath] [docIdsPath] [outputPath]");
             System.exit(1);
         }
 
         TermStatistics ts = new TermStatistics();
 
         HashMap <Integer, String> queriesMap = ts.loadQueries(queriesPath);
+        HashMap <Integer, HashSet <Integer>> docIdsMap = ts.loadDocuments(docIdsPath);
+
         JSONArray queriesJson = new JSONArray();
 
         Iterator it = queriesMap.entrySet().iterator();
         while (it.hasNext()) {
             Map.Entry pair = (Map.Entry) it.next();
 
-            JSONObject queryJson =ts.getQueryStatistics((String) pair.getValue(), (int) pair.getKey());
+            HashSet <Integer> queryDocIdsSet = docIdsMap.get((int) pair.getKey());
+            JSONObject queryJson =ts.getQueryStatistics(
+                    (String) pair.getValue(), (int) pair.getKey(), queryDocIdsSet);
             queriesJson.put(queryJson);
             it.remove(); // avoids a ConcurrentModificationException
         }
