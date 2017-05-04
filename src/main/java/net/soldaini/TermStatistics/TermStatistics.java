@@ -273,9 +273,7 @@ public class TermStatistics {
             PrintWriter writer = new PrintWriter(outputPath, "UTF-8");
             writer.println(queriesJson.toString());
             writer.close();
-        } catch (IOException e) {
-           // do something
-        }
+        } catch (IOException e) {}
 
         ts.close();
     }
