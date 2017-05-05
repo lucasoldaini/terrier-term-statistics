@@ -145,9 +145,6 @@ public class TermStatistics {
     }
 
     private JSONObject getQueryStatistics(String queryString, int queryId, HashSet <Integer> queryDocIdsSet) throws IOException {
-        float start = System.currentTimeMillis();
-        System.out.println("[info] Query " + queryId + ": \"" + queryString + "\"");
-
         String [] queryTerms  = queryString.split("[\\P{L}\\s]+");
         SearchRequest request = this.getSearchResults(String.join(" ", queryTerms));
 
@@ -159,8 +156,6 @@ public class TermStatistics {
             String subTerm = mutSubmittedTerms.get(i);
             String normedSubTerm = normalizeString(subTerm);
             String normedQueryTerm = stem(normalizeString(queryTerms[i]));
-
-            System.out.println(i +  " " + subTerm + " " + normedQueryTerm + " ");
 
             if (!normedQueryTerm.equals(normedSubTerm)) {
                 mutSubmittedTerms.add(i, "");
@@ -193,11 +188,6 @@ public class TermStatistics {
         jsonOut.put("terms", queryTerms);
         jsonOut.put("doc_ids", this.getDocNames(documentIds));
         jsonOut.put("qid", queryId);
-
-
-        float end = System.currentTimeMillis();
-        System.out.println("[info] Query " + queryId + " completed in " + (end - start) + " seconds.");
-
         return jsonOut;
 
     }
@@ -247,8 +237,6 @@ public class TermStatistics {
         Logger root = (Logger)LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME);
         root.setLevel(Level.WARN);
 
-        float start, delta;
-
         // parse from input the path to the
         String queriesPath = "";
         String docIdsPath = "";
@@ -263,20 +251,15 @@ public class TermStatistics {
             System.exit(1);
         }
 
-        start = System.currentTimeMillis();
         TermStatistics ts = new TermStatistics();
-        delta = (int) (System.currentTimeMillis() - start);
-        System.out.println("[info] loaded index in " + delta + " seconds.");
+        System.out.println("[info] loaded index.");
 
-        start = System.currentTimeMillis();
         HashMap <Integer, String> queriesMap = ts.loadQueries(queriesPath);
         HashMap <Integer, HashSet <Integer>> docIdsMap = ts.loadDocuments(docIdsPath);
-        delta = (int) (System.currentTimeMillis() - start);
-        System.out.println("[info] queries and documents loaded in " + delta + " seconds.");
+        System.out.println("[info] queries and documents loaded.");
 
         JSONArray queriesJson = new JSONArray();
 
-        start = System.currentTimeMillis();
         Iterator it = queriesMap.entrySet().iterator();
         while (it.hasNext()) {
             Map.Entry pair = (Map.Entry) it.next();
@@ -287,18 +270,13 @@ public class TermStatistics {
             queriesJson.put(queryJson);
             it.remove(); // avoids a ConcurrentModificationException
         }
-        delta = (int) (System.currentTimeMillis() - start);
-        System.out.println("[info] all queries processed in " + delta + " seconds.");
 
-
-        start = System.currentTimeMillis();
         try{
             PrintWriter writer = new PrintWriter(outputPath, "UTF-8");
             writer.println(queriesJson.toString());
             writer.close();
         } catch (IOException e) {}
-        delta = (int) (System.currentTimeMillis() - start);
-        System.out.println("[info] data written in " + delta + " seconds.");
+        System.out.println("[info] data written to destination.");
 
         ts.close();
     }
